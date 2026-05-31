@@ -10,6 +10,7 @@ from jarvis.events import EventLogger
 from jarvis.marketplaces import BunjangAdapter, DaangnAdapter, JoongnaAdapter
 from jarvis.models import Analysis, Draft, Listing
 from jarvis.monitor import RichMonitor
+from jarvis.query import normalize_search_query
 from jarvis.safety import ApprovalService, SafetyPolicy
 from jarvis.storage import Storage
 
@@ -33,13 +34,11 @@ class JarvisService:
         self._shortlist: list[Analysis] = []
         self._drafts: dict[str, Draft] = {}
 
-    def analyze_resale(self, query: str = "픽시") -> dict[str, Any]:
-        self.logger.emit("명령", f"리셀 분석 시작: {query}")
-        run_id = self.storage.create_search_run(query)
+    def _adapters(self) -> list[Any]:
         collection = self.rules["collection"]
         delay = tuple(float(value) for value in collection["detail_delay_seconds"])
         retry_limit = int(collection["retry_limit"])
-        adapters = [
+        return [
             BunjangAdapter(
                 self.rules["marketplaces"]["bunjang"]["search_url"],
                 delay,
@@ -59,12 +58,27 @@ class JarvisService:
                 self.safety,
             ),
         ]
+
+    def analyze_resale(self, query: str = "픽시") -> dict[str, Any]:
+        query = normalize_search_query(query)
+        self.logger.emit("명령", f"리셀 분석 시작: {query}")
+        run_id = self.storage.create_search_run(query)
+        collection = self.rules["collection"]
+        adapters = self._adapters()
         listings: list[Listing] = []
         with self.public_browser.page() as page:
             for adapter in adapters:
                 limit = int(collection["marketplaces"][adapter.marketplace])
                 self.logger.emit("행동", f"{adapter.marketplace} 공개 매물 탐색", limit=limit)
                 found = adapter.collect(page, query, limit)
+                debug = adapter.last_debug
+                if debug:
+                    self.logger.emit(
+                        "관찰",
+                        f"{adapter.marketplace} 링크 진단: anchors={debug.anchor_count}, "
+                        f"candidates={debug.candidate_count}",
+                        first_candidates=debug.candidate_urls[:5],
+                    )
                 self.logger.emit("관찰", f"{adapter.marketplace} 매물 {len(found)}개 수집")
                 listings.extend(found)
 
@@ -83,6 +97,18 @@ class JarvisService:
         self.monitor.shortlist(self._shortlist)
         self.logger.emit("결과", f"번개장터 상위 후보 {len(self._shortlist)}개 분석 완료")
         return self.shortlist_summary()
+
+    def debug_search(self, query: str = "픽시") -> dict[str, Any]:
+        normalized_query = normalize_search_query(query)
+        adapter = BunjangAdapter(
+            self.rules["marketplaces"]["bunjang"]["search_url"],
+            tuple(float(value) for value in self.rules["collection"]["detail_delay_seconds"]),
+            int(self.rules["collection"]["retry_limit"]),
+            self.safety,
+        )
+        with self.public_browser.page() as page:
+            result = adapter.debug_search(page, normalized_query)
+        return {"original_query": query, "normalized_query": normalized_query, **result}
 
     def shortlist_summary(self) -> dict[str, Any]:
         return {
