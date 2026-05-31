@@ -1,0 +1,56 @@
+collection:
+  total_limit: 100
+  detail_delay_seconds: [1.5, 3.0]
+  retry_limit: 2
+  marketplaces:
+    bunjang: 60
+    joongna: 25
+    daangn: 15
+
+marketplaces:
+  bunjang:
+    search_url: "https://m.bunjang.co.kr/search/products?q={query}"
+    allowed_hosts: ["m.bunjang.co.kr", "bunjang.co.kr"]
+  joongna:
+    search_url: "https://web.joongna.com/search/{query}"
+    allowed_hosts: ["web.joongna.com", "joongna.com"]
+  daangn:
+    search_url: "https://www.daangn.com/kr/buy-sell/?search={query}"
+    allowed_hosts: ["www.daangn.com", "daangn.com"]
+
+scoring:
+  minimum_reference_samples: 3
+  insufficient_sample_price_multiplier: 0.35
+  keyword_weights:
+    brand:
+      cinelli: 8
+      leader: 7
+      dosnoventa: 8
+      엔진11: 7
+      언노운: 4
+    component:
+      카본: 4
+      듀라에이스: 4
+      옴니움: 5
+      완차: 2
+    condition:
+      미사용: 3
+      상태좋음: 2
+      하자: -8
+      크랙: -20
+      먹음: -12
+      도난: -100
+
+draft:
+  max_length: 300
+  questions:
+    - "아직 판매 중인지"
+    - "프레임 크랙이나 먹음이 없는지"
+    - "직거래 시 확인 가능한지"
+  forbidden_phrases:
+    - "카카오톡"
+    - "오픈채팅"
+    - "전화번호"
+    - "문자"
+    - "당장 입금"
+
