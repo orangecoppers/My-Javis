@@ -8,6 +8,7 @@ from pathlib import Path
 
 from jarvis.config import Settings
 from jarvis.doctor import run_doctor
+from jarvis.query import normalize_search_query
 from jarvis.service import JarvisService
 from jarvis.voice import (
     LocalSpeechRecognizer,
@@ -36,6 +37,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     analyze = commands.add_parser("analyze", help="run one visible-browser research pass")
     analyze.add_argument("query", nargs="?", default="픽시")
+
+    debug_search = commands.add_parser("debug-search", help="diagnose Bunjang search collection")
+    debug_search.add_argument("query", nargs="?", default="픽시")
     return parser
 
 
@@ -71,6 +75,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"녹음 저장: {path}")
         text = recognizer.transcribe(samples, sample_rate)
         print(f"로컬 Whisper 전사: {text or '<인식 실패>'}")
+        print(f"정규화 검색어: {normalize_search_query(text)}")
         return 0 if text else 1
 
     service = JarvisService(settings)
@@ -79,6 +84,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "analyze":
         result = service.analyze_resale(args.query)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "debug-search":
+        result = service.debug_search(args.query)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     if args.command == "run":
