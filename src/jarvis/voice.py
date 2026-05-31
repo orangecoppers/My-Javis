@@ -10,6 +10,7 @@ from typing import Any
 
 from jarvis.config import Settings
 from jarvis.events import EventLogger
+from jarvis.query import has_fixed_gear_term, normalize_search_query
 
 
 DOMAIN_PROMPT = "자비스. 픽시 매물 찾아줘."
@@ -87,18 +88,6 @@ class VoiceCommand:
 class LocalCommandParser:
     APPROVE_WORDS = ("승인", "입력해", "채워", "좋아", "응", "네", "예")
     REJECT_WORDS = ("취소", "거절", "하지 마", "아니", "됐어")
-    FIXED_GEAR_TERMS = (
-        "픽시",
-        "리더",
-        "leader",
-        "치넬리",
-        "cinelli",
-        "도스노벤타",
-        "dosnoventa",
-        "엔진11",
-        "언노운",
-        "unknown",
-    )
 
     def parse(self, text: str, pending_draft: dict[str, Any] | None = None) -> VoiceCommand:
         normalized = " ".join(text.lower().split())
@@ -122,8 +111,8 @@ class LocalCommandParser:
             rank = self._rank(normalized)
             if rank is not None:
                 return VoiceCommand("create_inquiry_draft", {"rank": rank})
-        if any(word in normalized for word in ("찾아", "검색", "분석")):
-            query = self._query(normalized)
+        if any(word in normalized for word in ("찾아", "검색", "분석")) and has_fixed_gear_term(normalized):
+            query = normalize_search_query(normalized, require_fixed_gear_term=True)
             if query:
                 return VoiceCommand("analyze_resale", {"query": query})
         return VoiceCommand("unsupported", {"text": text})
@@ -146,15 +135,6 @@ class LocalCommandParser:
             "십번": 10,
         }
         return next((rank for word, rank in korean_numbers.items() if word in text.replace(" ", "")), None)
-
-    @classmethod
-    def _query(cls, text: str) -> str:
-        matched = [term for term in cls.FIXED_GEAR_TERMS if term in text]
-        if not matched:
-            return ""
-        matched = [term for term in matched if term != "픽시"]
-        matched.append("픽시")
-        return " ".join(dict.fromkeys(matched))
 
 
 class LocalSpeechRecognizer:
@@ -335,16 +315,18 @@ class OfflineVoiceSession:
                 if confirmation.name in {"confirm_and_fill_draft", "cancel_task"}:
                     response = self.dispatch_tool(confirmation.name, confirmation.arguments)
                     self._respond(confirmation.name, response)
+            else:
+                self.speak("승인 응답을 듣지 못했습니다.")
         elif name == "confirm_and_fill_draft":
             self.pending_draft = None
-            self.speak("입력칸에 채웠습니다. 전송은 브라우저에서 직접 확인해 주세요.")
+            self.speak(result["message"])
         elif name == "cancel_task":
             self.pending_draft = None
             self.speak("취소했습니다.")
 
     def _listen_after_prompt(self, prompt: str) -> str:
         self.speak(prompt)
-        samples, sample_rate = self.listener.listen_phrase(timeout_seconds=15)
+        samples, sample_rate = self.listener.listen_phrase(timeout_seconds=10)
         return self.recognizer.transcribe(samples, sample_rate)
 
     @staticmethod
